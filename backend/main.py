@@ -7,6 +7,7 @@ import pandas as pd
 import io
 import json
 from datetime import datetime, timedelta
+from calendar import monthrange
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 
@@ -580,9 +581,32 @@ def export_zoho_books(
         if payment.language_pair:
             description += f" - {payment.language_pair}"
 
+        # Format Bill Number: EmployeeID-30Sep25
+        employee_id = interpreter.employee_id if interpreter and interpreter.employee_id else "UNKNOWN"
+
+        # Parse period (assumed format: "2025-09" or similar) and format as "30Sep25"
+        try:
+            # Parse period as YYYY-MM
+            period_parts = payment.period.split('-')
+            if len(period_parts) >= 2:
+                year = period_parts[0]
+                month = period_parts[1]
+                # Get last day of the month
+                last_day = monthrange(int(year), int(month))[1]
+                # Create date object for last day of month
+                period_date = datetime(int(year), int(month), last_day)
+                # Format as "30Sep25"
+                formatted_period = period_date.strftime("%d%b%y")
+            else:
+                formatted_period = payment.period
+        except:
+            formatted_period = payment.period
+
+        bill_number = f"{employee_id}-{formatted_period}"
+
         row = [
             bill_date,  # Bill Date
-            f"{client.name if client else payment.client_id}{payment.period}",  # Bill Number
+            bill_number,  # Bill Number (EmployeeID-30Sep25)
             "",  # PurchaseOrder
             "Open",  # Bill Status
             interpreter.contact_name if interpreter else payment.internal_interpreter_name,  # Vendor Name
