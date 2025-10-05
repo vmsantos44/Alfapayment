@@ -379,12 +379,18 @@ const AlfaPaymentSystem = () => {
     try {
       const params = new URLSearchParams();
 
+      // Add ALL active filters to match the CSV export behavior
       if (filterClient !== 'all') {
         const clientId = filterClient.toLowerCase().replace(/\s+/g, '');
         params.append('client_id', clientId);
       }
       if (filterPeriod !== 'all') params.append('period', filterPeriod);
       if (filterStatus !== 'all') params.append('status', filterStatus);
+      if (filterMatchStatus !== 'all') params.append('match_status', filterMatchStatus);
+      if (filterLanguage !== 'all') params.append('language', filterLanguage);
+      if (filterStartDate) params.append('start_date', filterStartDate);
+      if (filterEndDate) params.append('end_date', filterEndDate);
+      if (searchText) params.append('search', searchText);
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/export-zoho-books?${params.toString()}`);
 
