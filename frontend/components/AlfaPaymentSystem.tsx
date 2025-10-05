@@ -1162,6 +1162,40 @@ const AlfaPaymentSystem = () => {
     a.click();
   };
 
+  const exportToZohoBooks = async () => {
+    try {
+      const params = new URLSearchParams();
+
+      // Convert client name to client ID
+      if (filterClient !== 'all') {
+        const clientId = filterClient.toLowerCase().replace(/\s+/g, '');
+        params.append('client_id', clientId);
+      }
+      if (filterPeriod !== 'all') params.append('period', filterPeriod);
+      if (filterStatus !== 'all') params.append('status', filterStatus);
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/export-zoho-books?${params.toString()}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error('Export error:', errorData);
+        alert(errorData.detail || 'Failed to export Zoho Books file');
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zoho_books_import_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error('Error exporting Zoho Books:', error);
+      alert(error.message || 'Failed to export Zoho Books file');
+    }
+  };
+
   const totalStats = filteredPayments.reduce((acc, p) => ({
     totalRevenue: acc.totalRevenue + parseFloat(p.clientCharge),
     totalPayments: acc.totalPayments + parseFloat(p.interpreterPayment),
@@ -1522,6 +1556,13 @@ const AlfaPaymentSystem = () => {
                 >
                   <Download size={20} />
                   Export CSV
+                </button>
+                <button
+                  onClick={exportToZohoBooks}
+                  className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+                >
+                  <Download size={20} />
+                  Zoho Books Excel
                 </button>
               </div>
             </div>

@@ -1,11 +1,14 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import pandas as pd
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
 
 from database import engine, get_db
 from models import Base, Interpreter, Client, ClientRate, Payment, PaymentBatch
@@ -494,6 +497,132 @@ async def export_payments_csv(
         raise HTTPException(status_code=500, detail=f"Error exporting CSV: {str(e)}")
 
 # ==================== INITIALIZATION ====================
+
+@app.get("/api/export-zoho-books")
+def export_zoho_books(
+    client_id: Optional[str] = None,
+    period: Optional[str] = None,
+    status: Optional[str] = None,
+    match_status: Optional[str] = None,
+    language: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Export payments in Zoho Books import format (Excel)"""
+
+    # Query payments with filters
+    query = db.query(Payment).join(Client)
+
+    if client_id:
+        query = query.filter(Payment.client_id == client_id)
+    if period:
+        query = query.filter(Payment.period == period)
+    if status:
+        query = query.filter(Payment.status == status)
+    if match_status:
+        query = query.filter(Payment.match_status == match_status)
+    if language:
+        query = query.filter(Payment.language_pair == language)
+    if search:
+        query = query.filter(Payment.internal_interpreter_name.ilike(f'%{search}%'))
+
+    # Date range filter
+    if start_date or end_date:
+        if start_date:
+            query = query.filter(Payment.period >= start_date)
+        if end_date:
+            query = query.filter(Payment.period <= end_date)
+
+    payments = query.all()
+
+    if not payments:
+        raise HTTPException(status_code=404, detail="No payments found matching the specified filters. Please adjust your filters and try again.")
+
+    # Create Excel workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Zoho Books Import"
+
+    # Define all Zoho Books columns (user said to include columns after Terms & Conditions but leave them blank)
+    headers = [
+        "Bill Date", "Bill Number", "PurchaseOrder", "Bill Status", "Vendor Name",
+        "Due Date", "Currency Code", "Exchange Rate", "Account", "Description",
+        "Quantity", "Rate", "Total", "Terms & Conditions", "Customer Name",
+        "Project Name", "Adjustment", "Item Type", "Purchase Order Number",
+        "Is Discount Before Tax", "Entity Discount Amount", "Discount Account",
+        "Warehouse Name", "Branch Name", "CIT/Importer Name"
+    ]
+
+    # Write headers
+    ws.append(headers)
+
+    # Style headers
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+
+    # Write payment data
+    for payment in payments:
+        # Get interpreter
+        interpreter = db.query(Interpreter).filter(Interpreter.id == payment.interpreter_id).first()
+
+        # Get client
+        client = db.query(Client).filter(Client.id == payment.client_id).first()
+
+        # Calculate dates
+        bill_date = datetime.now().strftime("%d/%m/%Y")
+        due_date = (datetime.now() + timedelta(days=30)).strftime("%d/%m/%Y")
+
+        # Create description
+        description = f"Interpretation Services {client.name if client else payment.client_id}"
+        if payment.language_pair:
+            description += f" - {payment.language_pair}"
+
+        row = [
+            bill_date,  # Bill Date
+            f"{client.name if client else payment.client_id}{payment.period}",  # Bill Number
+            "",  # PurchaseOrder
+            "Open",  # Bill Status
+            interpreter.contact_name if interpreter else payment.internal_interpreter_name,  # Vendor Name
+            due_date,  # Due Date
+            "USD",  # Currency Code
+            1,  # Exchange Rate
+            "",  # Account
+            description,  # Description
+            int(payment.minutes) if payment.minutes else 0,  # Quantity (minutes)
+            float(payment.client_rate) if payment.client_rate else 0,  # Rate
+            float(payment.interpreter_payment) if payment.interpreter_payment else 0,  # Total
+            "",  # Terms & Conditions (leave blank as user requested)
+            "",  # Customer Name
+            "",  # Project Name
+            "",  # Adjustment
+            "",  # Item Type
+            "",  # Purchase Order Number
+            "",  # Is Discount Before Tax
+            "",  # Entity Discount Amount
+            "",  # Discount Account
+            "",  # Warehouse Name
+            "",  # Branch Name
+            ""   # CIT/Importer Name
+        ]
+
+        ws.append(row)
+
+    # Save to BytesIO
+    excel_file = io.BytesIO()
+    wb.save(excel_file)
+    excel_file.seek(0)
+
+    # Generate filename
+    filename = f"zoho_books_import_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    return StreamingResponse(
+        excel_file,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 @app.on_event("startup")
 async def startup_event():
