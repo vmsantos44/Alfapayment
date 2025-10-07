@@ -1,0 +1,21 @@
+# Alfa Payment System - Replit Configuration
+run = "npm run start:all"
+
+[nix]
+channel = "stable-24_05"
+
+[env]
+PORT = "8000"
+FRONTEND_URL = "https://$REPL_SLUG.$REPL_OWNER.repl.co"
+PATH = "/home/runner/$REPL_SLUG/.config/npm/node_global/bin:/home/runner/$REPL_SLUG/node_modules/.bin:$PATH"
+
+[deployment]
+run = ["sh", "-c", "npm run start:all"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
