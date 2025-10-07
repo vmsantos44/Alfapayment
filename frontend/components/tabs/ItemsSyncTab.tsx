@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { zohoBooksAPI } from '@/lib/api';
+import { zohoBooksAPI, clientsAPI } from '@/lib/api';
 import { RefreshCw, Download, CheckCircle2, XCircle, Info, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { COMMON_LANGUAGES } from '@/lib/constants';
 
@@ -94,10 +94,11 @@ export function ItemsSyncTab() {
     localStorage.setItem('itemSyncDefaults', JSON.stringify(sessionDefaults));
   }, [sessionDefaults]);
 
-  // Load organizations and expense accounts on mount
+  // Load organizations, expense accounts, and clients on mount
   useEffect(() => {
     loadOrganizations();
     loadExpenseAccounts();
+    loadClients();
   }, []);
 
   const loadOrganizations = async () => {
@@ -134,6 +135,15 @@ export function ItemsSyncTab() {
       console.error('Error loading expense accounts:', err);
     } finally {
       setLoadingAccounts(false);
+    }
+  };
+
+  const loadClients = async () => {
+    try {
+      const response = await clientsAPI.getAll();
+      setClients(response || []);
+    } catch (err: any) {
+      console.error('Error loading clients:', err);
     }
   };
 
