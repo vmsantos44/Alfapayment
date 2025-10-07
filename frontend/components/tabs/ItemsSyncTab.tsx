@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { zohoBooksAPI } from '@/lib/api';
-import { RefreshCw, Download, CheckCircle2, XCircle, Info } from 'lucide-react';
+import { RefreshCw, Download, CheckCircle2, XCircle, Info, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { COMMON_LANGUAGES } from '@/lib/constants';
 
 interface ZohoItem {
@@ -42,6 +42,13 @@ interface ItemMapping {
   };
 }
 
+interface SessionDefaults {
+  client_id: string;
+  service_type: string;
+  service_location: string;
+  unit_type: string;
+}
+
 export function ItemsSyncTab() {
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [selectedOrganization, setSelectedOrganization] = useState<string>('');
@@ -57,6 +64,35 @@ export function ItemsSyncTab() {
   const [search, setSearch] = useState('');
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string>('');
+
+  // Session Defaults and Bulk Edit state
+  const [showDefaults, setShowDefaults] = useState(true);
+  const [sessionDefaults, setSessionDefaults] = useState<SessionDefaults>(() => {
+    // Load from localStorage
+    const saved = localStorage.getItem('itemSyncDefaults');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { client_id: '', service_type: 'OPI', service_location: 'Remote', unit_type: 'per_minute' };
+      }
+    }
+    return { client_id: '', service_type: 'OPI', service_location: 'Remote', unit_type: 'per_minute' };
+  });
+  const [bulkEdit, setBulkEdit] = useState({
+    client_id: '',
+    language: '',
+    service_type: '',
+    service_location: '',
+    unit_type: '',
+    expense_account_id: '',
+    expense_account_name: ''
+  });
+
+  // Save session defaults to localStorage when they change
+  useEffect(() => {
+    localStorage.setItem('itemSyncDefaults', JSON.stringify(sessionDefaults));
+  }, [sessionDefaults]);
 
   // Load organizations and expense accounts on mount
   useEffect(() => {
@@ -119,15 +155,16 @@ export function ItemsSyncTab() {
       setItems(response.items || []);
       setClients(response.clients || []);
 
-      // Initialize mappings with default values
+      // Initialize mappings with session defaults and suggested values
       const initialMappings: ItemMapping = {};
       response.items.forEach((item: ZohoItem) => {
         initialMappings[item.item_id] = {
-          client_id: item.suggested_client_id || (response.clients?.[0]?.id || ''),
+          // Apply session defaults first, then suggested values if available
+          client_id: item.suggested_client_id || sessionDefaults.client_id || (response.clients?.[0]?.id || ''),
           language: item.suggested_language || '',
-          service_type: item.suggested_service_type || 'OPI',
-          service_location: item.suggested_service_location || 'Remote',
-          unit_type: 'per_minute',
+          service_type: item.suggested_service_type || sessionDefaults.service_type || 'OPI',
+          service_location: item.suggested_service_location || sessionDefaults.service_location || 'Remote',
+          unit_type: sessionDefaults.unit_type || 'per_minute',
           notes: '',
           expense_account_id: item.suggested_expense_account_id || item.account_id || '',
           expense_account_name: item.suggested_expense_account_name || item.account_name || ''
@@ -238,6 +275,44 @@ export function ItemsSyncTab() {
     }));
   };
 
+  const applyBulkEdit = () => {
+    const newMappings = { ...itemMappings };
+    selectedItems.forEach(itemId => {
+      // Only update non-empty values from bulk edit
+      if (bulkEdit.client_id) {
+        newMappings[itemId].client_id = bulkEdit.client_id;
+      }
+      if (bulkEdit.language) {
+        newMappings[itemId].language = bulkEdit.language;
+      }
+      if (bulkEdit.service_type) {
+        newMappings[itemId].service_type = bulkEdit.service_type;
+      }
+      if (bulkEdit.service_location) {
+        newMappings[itemId].service_location = bulkEdit.service_location;
+      }
+      if (bulkEdit.unit_type) {
+        newMappings[itemId].unit_type = bulkEdit.unit_type;
+      }
+      if (bulkEdit.expense_account_id) {
+        newMappings[itemId].expense_account_id = bulkEdit.expense_account_id;
+        newMappings[itemId].expense_account_name = bulkEdit.expense_account_name;
+      }
+    });
+    setItemMappings(newMappings);
+
+    // Clear bulk edit form after applying
+    setBulkEdit({
+      client_id: '',
+      language: '',
+      service_type: '',
+      service_location: '',
+      unit_type: '',
+      expense_account_id: '',
+      expense_account_name: ''
+    });
+  };
+
   const filteredItems = items;
 
   return (
@@ -279,6 +354,83 @@ export function ItemsSyncTab() {
               <p className="text-xs text-gray-500 mt-1">
                 {organizations.length} organization{organizations.length !== 1 ? 's' : ''} available
               </p>
+            )}
+          </div>
+
+          {/* Session Defaults Panel */}
+          <div className="border border-gray-300 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setShowDefaults(!showDefaults)}
+              className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-gray-600" />
+                <span className="font-medium text-gray-900">Session Defaults</span>
+                <span className="text-xs text-gray-500">(Auto-applied to all fetched items)</span>
+              </div>
+              {showDefaults ? <ChevronUp className="h-4 w-4 text-gray-600" /> : <ChevronDown className="h-4 w-4 text-gray-600" />}
+            </button>
+
+            {showDefaults && (
+              <div className="p-4 bg-white grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Default Client</label>
+                  <select
+                    value={sessionDefaults.client_id}
+                    onChange={(e) => setSessionDefaults({ ...sessionDefaults, client_id: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">None</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Default Service Type</label>
+                  <select
+                    value={sessionDefaults.service_type}
+                    onChange={(e) => setSessionDefaults({ ...sessionDefaults, service_type: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="OPI">OPI</option>
+                    <option value="VRI">VRI</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Translation">Translation</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Default Service Location</label>
+                  <select
+                    value={sessionDefaults.service_location}
+                    onChange={(e) => setSessionDefaults({ ...sessionDefaults, service_location: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Remote">Remote</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Both">Both</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Default Unit Type</label>
+                  <select
+                    value={sessionDefaults.unit_type}
+                    onChange={(e) => setSessionDefaults({ ...sessionDefaults, unit_type: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="per_minute">Per Minute</option>
+                    <option value="per_hour">Per Hour</option>
+                    <option value="per_word">Per Word</option>
+                    <option value="flat_rate">Flat Rate</option>
+                  </select>
+                </div>
+              </div>
             )}
           </div>
 
@@ -336,6 +488,133 @@ export function ItemsSyncTab() {
                     Sync Selected ({selectedItems.size})
                   </>
                 )}
+              </button>
+            </div>
+          )}
+
+          {/* Bulk Edit Panel */}
+          {selectedItems.size > 1 && (
+            <div className="border-2 border-purple-200 rounded-lg bg-purple-50 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Settings className="h-5 w-5 text-purple-600" />
+                <h3 className="font-semibold text-purple-900">
+                  Bulk Edit ({selectedItems.size} items selected)
+                </h3>
+              </div>
+              <p className="text-sm text-purple-700 mb-4">
+                Set values below and click "Apply" to update all selected items at once. Leave fields empty to keep existing values.
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+                  <select
+                    value={bulkEdit.client_id}
+                    onChange={(e) => setBulkEdit({ ...bulkEdit, client_id: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Keep existing</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Language</label>
+                  <select
+                    value={bulkEdit.language}
+                    onChange={(e) => setBulkEdit({ ...bulkEdit, language: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Keep existing</option>
+                    {COMMON_LANGUAGES.map((lang) => (
+                      <option key={lang} value={lang}>
+                        {lang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Service Type</label>
+                  <select
+                    value={bulkEdit.service_type}
+                    onChange={(e) => setBulkEdit({ ...bulkEdit, service_type: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Keep existing</option>
+                    <option value="OPI">OPI</option>
+                    <option value="VRI">VRI</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Translation">Translation</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Service Location</label>
+                  <select
+                    value={bulkEdit.service_location}
+                    onChange={(e) => setBulkEdit({ ...bulkEdit, service_location: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Keep existing</option>
+                    <option value="Remote">Remote</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Both">Both</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Unit Type</label>
+                  <select
+                    value={bulkEdit.unit_type}
+                    onChange={(e) => setBulkEdit({ ...bulkEdit, unit_type: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Keep existing</option>
+                    <option value="per_minute">Per Minute</option>
+                    <option value="per_hour">Per Hour</option>
+                    <option value="per_word">Per Word</option>
+                    <option value="flat_rate">Flat Rate</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Expense Account</label>
+                  <select
+                    value={bulkEdit.expense_account_id}
+                    onChange={(e) => {
+                      const selectedAccount = expenseAccounts.find(
+                        acc => acc.account_id === e.target.value
+                      );
+                      setBulkEdit({
+                        ...bulkEdit,
+                        expense_account_id: e.target.value,
+                        expense_account_name: selectedAccount?.account_name || ''
+                      });
+                    }}
+                    disabled={loadingAccounts}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                  >
+                    <option value="">Keep existing</option>
+                    {expenseAccounts.map((account) => (
+                      <option key={account.account_id} value={account.account_id}>
+                        {account.account_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button
+                onClick={applyBulkEdit}
+                className="w-full bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 font-medium transition-colors"
+              >
+                Apply to Selected ({selectedItems.size} items)
               </button>
             </div>
           )}
