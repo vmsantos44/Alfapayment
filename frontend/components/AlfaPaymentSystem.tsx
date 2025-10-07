@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Upload, FileText, TrendingUp, Users, Building2 } from 'lucide-react';
+import { Upload, FileText, TrendingUp, Users, Building2, Cloud, RefreshCw, DollarSign, Download } from 'lucide-react';
 import Papa from 'papaparse';
 
 // Types
@@ -22,10 +22,14 @@ import { ClientsTab } from './tabs/ClientsTab';
 import { ImportTab } from './tabs/ImportTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { AnalyticsTab } from './tabs/AnalyticsTab';
+import { ZohoImportTab } from './tabs/ZohoImportTab';
+import { SyncTab } from './tabs/SyncTab';
+import { ZohoBooksTab } from './tabs/ZohoBooksTab';
+import { ItemsSyncTab } from './tabs/ItemsSyncTab';
 
 // Utils
 import { calculatePayments, detectColumnMapping, calculatePaymentStats } from '@/lib/utils/paymentCalculator';
-import { clientsAPI } from '@/lib/api';
+import { clientsAPI, zohoAPI } from '@/lib/api';
 
 const AlfaPaymentSystem = () => {
   const [activeTab, setActiveTab] = useState('interpreters');
@@ -38,7 +42,8 @@ const AlfaPaymentSystem = () => {
     createInterpreter,
     updateInterpreter,
     deleteInterpreter,
-    importInterpretersFromCSV
+    importInterpretersFromCSV,
+    syncFromZohoSheet
   } = useInterpreters();
 
   const {
@@ -66,7 +71,7 @@ const AlfaPaymentSystem = () => {
   const [importedData, setImportedData] = useState<any[]>([]);
   const [calculatedPayments, setCalculatedPayments] = useState<Payment[]>([]);
 
-  // Filter states
+  // Filter states for Review/Analytics tabs
   const [filterClient, setFilterClient] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterMatchStatus, setFilterMatchStatus] = useState<string>('all');
@@ -75,6 +80,21 @@ const AlfaPaymentSystem = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
+
+  // Filter states for Interpreters tab
+  const [filterInterpreterLanguage, setFilterInterpreterLanguage] = useState<string>('all');
+  const [filterServiceLocation, setFilterServiceLocation] = useState<string>('all');
+  const [filterPaymentFrequency, setFilterPaymentFrequency] = useState<string>('all');
+  const [filterOnboardingStatus, setFilterOnboardingStatus] = useState<string>('all');
+  const [searchInterpreterText, setSearchInterpreterText] = useState<string>('');
+
+  // Bill date for Zoho Books export (defaults to today)
+  const [billDate, setBillDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Zoho import states
+  const [zohoCandidates, setZohoCandidates] = useState<any[]>([]);
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
+  const [zohoLoading, setZohoLoading] = useState(false);
 
   // Modal states
   const [showInterpreterModal, setShowInterpreterModal] = useState(false);
@@ -133,10 +153,40 @@ const AlfaPaymentSystem = () => {
     return true;
   });
 
-  // Get unique filter values
+  // Apply interpreter filters
+  const filteredInterpreters = interpreters.filter(interpreter => {
+    if (filterInterpreterLanguage !== 'all' && interpreter.language !== filterInterpreterLanguage) return false;
+    if (filterServiceLocation !== 'all' && interpreter.serviceLocation !== filterServiceLocation) return false;
+    if (filterPaymentFrequency !== 'all' && interpreter.paymentFrequency !== filterPaymentFrequency) return false;
+    if (filterOnboardingStatus !== 'all' && interpreter.onboardingStatus !== filterOnboardingStatus) return false;
+
+    if (searchInterpreterText) {
+      const searchLower = searchInterpreterText.toLowerCase();
+      const matchesName = interpreter.contactName?.toLowerCase().includes(searchLower);
+      const matchesEmail = interpreter.email?.toLowerCase().includes(searchLower);
+      const matchesCloudbreak = interpreter.cloudbreakId?.toLowerCase().includes(searchLower);
+      const matchesLanguagelink = interpreter.languagelinkId?.toLowerCase().includes(searchLower);
+      const matchesPropio = interpreter.propioId?.toLowerCase().includes(searchLower);
+      const matchesEmployeeId = interpreter.employeeId?.toLowerCase().includes(searchLower);
+
+      if (!matchesName && !matchesEmail && !matchesCloudbreak && !matchesLanguagelink && !matchesPropio && !matchesEmployeeId) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Get unique filter values for payments
   const uniqueClients = Array.from(new Set(reviewPayments.map(p => p.clientName))).sort();
   const uniqueLanguages = Array.from(new Set(reviewPayments.map(p => p.languagePair).filter(Boolean))).sort();
   const uniquePeriods = Array.from(new Set(reviewPayments.map(p => p.period))).sort();
+
+  // Get unique filter values for interpreters
+  const uniqueInterpreterLanguages = Array.from(new Set(interpreters.map(i => i.language).filter(Boolean))).sort();
+  const uniqueServiceLocations = Array.from(new Set(interpreters.map(i => i.serviceLocation).filter(Boolean))).sort();
+  const uniquePaymentFrequencies = Array.from(new Set(interpreters.map(i => i.paymentFrequency).filter(Boolean))).sort();
+  const uniqueOnboardingStatuses = Array.from(new Set(interpreters.map(i => i.onboardingStatus).filter(Boolean))).sort();
 
   // Calculate stats
   const totalStats = calculatePaymentStats(filteredPayments);
@@ -164,6 +214,24 @@ const AlfaPaymentSystem = () => {
     setSearchText('');
     setFilterStartDate('');
     setFilterEndDate('');
+  };
+
+  const handleInterpreterFilterChange = (filter: string, value: string) => {
+    switch (filter) {
+      case 'language': setFilterInterpreterLanguage(value); break;
+      case 'serviceLocation': setFilterServiceLocation(value); break;
+      case 'paymentFrequency': setFilterPaymentFrequency(value); break;
+      case 'onboardingStatus': setFilterOnboardingStatus(value); break;
+      case 'search': setSearchInterpreterText(value); break;
+    }
+  };
+
+  const clearInterpreterFilters = () => {
+    setFilterInterpreterLanguage('all');
+    setFilterServiceLocation('all');
+    setFilterPaymentFrequency('all');
+    setFilterOnboardingStatus('all');
+    setSearchInterpreterText('');
   };
 
   // Interpreter handlers
@@ -207,6 +275,29 @@ const AlfaPaymentSystem = () => {
     }
   };
 
+  const handleSyncFromZoho = async () => {
+    try {
+      const result = await syncFromZohoSheet();
+
+      if (result.success) {
+        let message = `✓ Zoho Sync Complete!\n\n`;
+        message += `• ${result.summary.created} new interpreters added\n`;
+        message += `• ${result.summary.updated} interpreters updated\n`;
+        message += `• ${result.summary.skipped} unchanged\n`;
+        message += `• Total in Zoho: ${result.summary.total}`;
+
+        if (result.summary.errors > 0) {
+          message += `\n\n⚠️ ${result.summary.errors} errors occurred`;
+        }
+
+        alert(message);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to sync from Zoho Sheet:\n\n${errorMessage}`);
+    }
+  };
+
   // Client handlers
   const handleSaveClient = async (data: any) => {
     try {
@@ -229,6 +320,80 @@ const AlfaPaymentSystem = () => {
       } catch (error) {
         alert('Failed to delete client');
       }
+    }
+  };
+
+  // Zoho import handlers
+  const handleFetchZohoCandidates = async (filters: {
+    module?: string;
+    onboardingStatus?: string;
+    language?: string;
+    serviceLocation?: string;
+  }) => {
+    try {
+      setZohoLoading(true);
+      const response = await zohoAPI.getCandidates({
+        module: filters.module,
+        onboarding_status: filters.onboardingStatus,
+        language: filters.language,
+        service_location: filters.serviceLocation,
+        limit: 100
+      });
+
+      // Extract candidates from response
+      const candidates = Array.isArray(response) ? response : (response.data || []);
+      setZohoCandidates(candidates);
+      setSelectedCandidates(new Set()); // Clear selections
+    } catch (error) {
+      console.error('Error fetching Zoho candidates:', error);
+      alert('Failed to fetch candidates from Zoho CRM');
+    } finally {
+      setZohoLoading(false);
+    }
+  };
+
+  const handleToggleCandidate = (id: string) => {
+    const newSelected = new Set(selectedCandidates);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedCandidates(newSelected);
+  };
+
+  const handleToggleAllCandidates = () => {
+    if (selectedCandidates.size === zohoCandidates.length) {
+      setSelectedCandidates(new Set());
+    } else {
+      setSelectedCandidates(new Set(zohoCandidates.map(c => c.id)));
+    }
+  };
+
+  const handleImportSelectedCandidates = async () => {
+    if (selectedCandidates.size === 0) {
+      alert('Please select at least one candidate to import');
+      return;
+    }
+
+    try {
+      setZohoLoading(true);
+      const candidateIds = Array.from(selectedCandidates);
+      const result = await zohoAPI.importCandidates(candidateIds);
+
+      // Reload interpreters to show newly imported ones
+      await loadInterpreters();
+
+      alert(`Successfully imported ${result.summary?.created || 0} interpreters`);
+
+      // Clear selections and switch to interpreters tab
+      setSelectedCandidates(new Set());
+      setActiveTab('interpreters');
+    } catch (error) {
+      console.error('Error importing candidates:', error);
+      alert('Failed to import selected candidates');
+    } finally {
+      setZohoLoading(false);
     }
   };
 
@@ -392,6 +557,9 @@ const AlfaPaymentSystem = () => {
       if (filterEndDate) params.append('end_date', filterEndDate);
       if (searchText) params.append('search', searchText);
 
+      // Add bill date
+      if (billDate) params.append('bill_date', billDate);
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/export-zoho-books?${params.toString()}`);
 
       if (!response.ok) {
@@ -447,9 +615,13 @@ const AlfaPaymentSystem = () => {
             {[
               { id: 'interpreters', label: 'Interpreters', icon: Users },
               { id: 'clients', label: 'Clients', icon: Building2 },
+              { id: 'sync', label: 'Sync', icon: RefreshCw },
+              { id: 'zoho', label: 'Zoho Import', icon: Cloud },
               { id: 'import', label: 'Import', icon: Upload },
               { id: 'review', label: 'Review', icon: FileText },
-              { id: 'analytics', label: 'Analytics', icon: TrendingUp }
+              { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+              { id: 'zoho-books', label: 'Zoho Books', icon: DollarSign },
+              { id: 'items-sync', label: 'Items Sync', icon: Download }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -472,6 +644,18 @@ const AlfaPaymentSystem = () => {
         {activeTab === 'interpreters' && (
           <InterpretersTab
             interpreters={interpreters}
+            filteredInterpreters={filteredInterpreters}
+            uniqueLanguages={uniqueInterpreterLanguages}
+            uniqueServiceLocations={uniqueServiceLocations}
+            uniquePaymentFrequencies={uniquePaymentFrequencies}
+            uniqueOnboardingStatuses={uniqueOnboardingStatuses}
+            filterLanguage={filterInterpreterLanguage}
+            filterServiceLocation={filterServiceLocation}
+            filterPaymentFrequency={filterPaymentFrequency}
+            filterOnboardingStatus={filterOnboardingStatus}
+            searchText={searchInterpreterText}
+            onFilterChange={handleInterpreterFilterChange}
+            onClearFilters={clearInterpreterFilters}
             onImportCSV={handleImportInterpretersCSV}
             onAddInterpreter={() => {
               setEditingItem(null);
@@ -482,6 +666,8 @@ const AlfaPaymentSystem = () => {
               setShowInterpreterModal(true);
             }}
             onDeleteInterpreter={handleDeleteInterpreter}
+            onSyncFromZoho={handleSyncFromZoho}
+            isSyncing={interpretersLoading}
           />
         )}
 
@@ -500,6 +686,23 @@ const AlfaPaymentSystem = () => {
           />
         )}
 
+        {activeTab === 'sync' && (
+          <SyncTab />
+        )}
+
+        {activeTab === 'zoho' && (
+          <ZohoImportTab
+            zohoCandidates={zohoCandidates}
+            selectedCandidates={selectedCandidates}
+            loading={zohoLoading}
+            existingInterpreters={interpreters}
+            onFetchCandidates={handleFetchZohoCandidates}
+            onToggleCandidate={handleToggleCandidate}
+            onToggleAll={handleToggleAllCandidates}
+            onImportSelected={handleImportSelectedCandidates}
+          />
+        )}
+
         {activeTab === 'import' && (
           <ImportTab
             selectedClientId={selectedClientId}
@@ -512,6 +715,7 @@ const AlfaPaymentSystem = () => {
             onColumnMappingChange={setColumnMapping}
             onSaveMapping={handleSaveColumnTemplate}
             onCalculate={handleCalculatePayments}
+            onPaymentsUpdated={loadPayments}
           />
         )}
 
@@ -530,6 +734,7 @@ const AlfaPaymentSystem = () => {
             filterStartDate={filterStartDate}
             filterEndDate={filterEndDate}
             searchText={searchText}
+            billDate={billDate}
             totalStats={totalStats}
             onFilterChange={handleFilterChange}
             onClearFilters={clearFilters}
@@ -539,6 +744,7 @@ const AlfaPaymentSystem = () => {
             onAdjustment={handleAddAdjustment}
             onExportCSV={handleExportCSV}
             onExportZohoBooks={handleExportZohoBooks}
+            onBillDateChange={setBillDate}
           />
         )}
 
@@ -557,6 +763,16 @@ const AlfaPaymentSystem = () => {
             onFilterChange={handleFilterChange}
             onClearFilters={clearFilters}
           />
+        )}
+
+        {activeTab === 'zoho-books' && (
+          <ZohoBooksTab
+            payments={dbPayments}
+          />
+        )}
+
+        {activeTab === 'items-sync' && (
+          <ItemsSyncTab />
         )}
       </div>
     </div>

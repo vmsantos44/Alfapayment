@@ -16,6 +16,7 @@ interface ReviewTabProps {
   filterStartDate: string;
   filterEndDate: string;
   searchText: string;
+  billDate: string;
   totalStats: any;
   onFilterChange: (filter: string, value: string) => void;
   onClearFilters: () => void;
@@ -25,6 +26,7 @@ interface ReviewTabProps {
   onAdjustment: (index: number) => void;
   onExportCSV: () => void;
   onExportZohoBooks: () => void;
+  onBillDateChange: (date: string) => void;
 }
 
 export const ReviewTab: React.FC<ReviewTabProps> = ({
@@ -41,6 +43,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   filterStartDate,
   filterEndDate,
   searchText,
+  billDate,
   totalStats,
   onFilterChange,
   onClearFilters,
@@ -49,7 +52,8 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   onReject,
   onAdjustment,
   onExportCSV,
-  onExportZohoBooks
+  onExportZohoBooks,
+  onBillDateChange
 }) => {
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -60,23 +64,32 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
             (Showing {filteredPayments.length} of {reviewPayments.length} payments)
           </span>
         </h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <div className="flex flex-col">
+            <label className="text-xs font-medium text-gray-700 mb-1">Bill Date</label>
+            <input
+              type="date"
+              value={billDate}
+              onChange={(e) => onBillDateChange(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-300 rounded"
+            />
+          </div>
           <button
             onClick={onApproveAll}
-            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mt-5"
           >
             Approve All Matched
           </button>
           <button
             onClick={onExportCSV}
-            className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-5"
           >
             <Download size={20} />
             Export CSV
           </button>
           <button
             onClick={onExportZohoBooks}
-            className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+            className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mt-5"
           >
             <Download size={20} />
             Zoho Books Excel

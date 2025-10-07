@@ -9,7 +9,9 @@ export const usePayments = (clients: Client[]) => {
   const loadPayments = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await paymentsAPI.getAll();
+      const response = await paymentsAPI.getAll();
+      // Backend returns { data: [...] }, extract the array
+      const data = Array.isArray(response) ? response : (response.data || []);
       setDbPayments(data);
     } catch (error) {
       console.error('Error loading payments:', error);

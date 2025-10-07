@@ -1,7 +1,8 @@
-import React from 'react';
-import { Upload } from 'lucide-react';
+import React, { useState } from 'react';
+import { Upload, FileSpreadsheet } from 'lucide-react';
 import { Client, ColumnMapping } from '@/lib/types';
 import { STANDARD_COLUMNS } from '@/lib/constants';
+import { paymentsAPI } from '@/lib/api';
 
 interface ImportTabProps {
   selectedClientId: string;
@@ -14,6 +15,7 @@ interface ImportTabProps {
   onColumnMappingChange: (mapping: ColumnMapping) => void;
   onSaveMapping: () => void;
   onCalculate: () => void;
+  onPaymentsUpdated?: () => void;
 }
 
 export const ImportTab: React.FC<ImportTabProps> = ({
@@ -26,12 +28,93 @@ export const ImportTab: React.FC<ImportTabProps> = ({
   onFileUpload,
   onColumnMappingChange,
   onSaveMapping,
-  onCalculate
+  onCalculate,
+  onPaymentsUpdated
 }) => {
+  const [propioFile, setPropioFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handlePropioImport = async () => {
+    if (!propioFile) return;
+
+    try {
+      setIsImporting(true);
+      const result = await paymentsAPI.importPropioReport(propioFile);
+
+      if (result.success) {
+        alert(result.message);
+        setPropioFile(null);
+        // Reset file input
+        const fileInput = document.getElementById('propio-file-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+
+        // Notify parent to refresh payments
+        if (onPaymentsUpdated) onPaymentsUpdated();
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to import Propio report:\n\n${errorMessage}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Quick Import: Propio Report */}
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg shadow-lg border-2 border-purple-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <FileSpreadsheet size={32} className="text-purple-600" />
+          <div>
+            <h2 className="text-2xl font-bold text-purple-900">Quick Import: Propio Report</h2>
+            <p className="text-sm text-purple-700">Upload Propio Excel reports for automatic processing</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg p-4 border-2 border-dashed border-purple-300">
+          <div className="flex items-center gap-4">
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => setPropioFile(e.target.files?.[0] || null)}
+              className="hidden"
+              id="propio-file-upload"
+            />
+            <label
+              htmlFor="propio-file-upload"
+              className="cursor-pointer bg-purple-500 text-white px-6 py-2 rounded-lg hover:bg-purple-600 inline-flex items-center gap-2"
+            >
+              <Upload size={20} />
+              Choose Propio Report
+            </label>
+
+            {propioFile && (
+              <>
+                <span className="text-sm text-gray-700 font-medium">{propioFile.name}</span>
+                <button
+                  onClick={handlePropioImport}
+                  disabled={isImporting}
+                  className={`ml-auto px-6 py-2 rounded-lg font-medium ${
+                    isImporting
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-green-500 hover:bg-green-600'
+                  } text-white`}
+                >
+                  {isImporting ? 'Importing...' : 'Import Now'}
+                </button>
+              </>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-600 mt-3">
+            💡 Propio reports are automatically processed. No column mapping required!
+          </p>
+        </div>
+      </div>
+
+      {/* Standard Client Import */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-2xl font-bold mb-4">Import Client Report</h2>
+        <h2 className="text-2xl font-bold mb-4">Import Other Client Reports</h2>
 
         <div className="mb-4">
           <label className="block text-sm font-medium mb-2">Select Client *</label>

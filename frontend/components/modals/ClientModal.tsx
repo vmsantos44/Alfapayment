@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Client, ClientRate } from '@/lib/types';
-import { COMMON_LANGUAGES } from '@/lib/constants';
-import { clientRatesAPI } from '@/lib/api';
+import { COMMON_LANGUAGES, COMMON_CURRENCIES } from '@/lib/constants';
+import { clientRatesAPI, zohoBooksAPI } from '@/lib/api';
 
 interface ClientModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: { name: string; rates?: ClientRate[] }) => void;
+  onSave: (data: { name: string; email?: string; currency?: string; address?: string; rates?: ClientRate[] }) => void;
   editingItem: Client | null;
 }
 
@@ -17,27 +17,69 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   onSave,
   editingItem
 }) => {
-  const [formData, setFormData] = useState({ name: editingItem?.name || '' });
+  const [formData, setFormData] = useState({
+    name: editingItem?.name || '',
+    email: editingItem?.email || '',
+    currency: editingItem?.currency || 'USD',
+    address: editingItem?.address || ''
+  });
   const [clientRates, setClientRates] = useState<ClientRate[]>([]);
   const [newRate, setNewRate] = useState({
     language: '',
     serviceLocation: '',
     ratePerMinute: '',
     ratePerHour: '',
-    rateType: 'minute'
+    rateType: 'minute',
+    expenseAccountId: '',
+    expenseAccountName: ''
   });
   const [loadingRates, setLoadingRates] = useState(false);
+  const [expenseAccounts, setExpenseAccounts] = useState<any[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  // Load expense accounts on mount
+  useEffect(() => {
+    if (isOpen) {
+      loadExpenseAccounts();
+    }
+  }, [isOpen]);
 
   // Load client rates when editing
   useEffect(() => {
     if (isOpen && editingItem) {
       loadClientRates();
-      setFormData({ name: editingItem.name });
+      setFormData({
+        name: editingItem.name,
+        email: editingItem.email || '',
+        currency: editingItem.currency || 'USD',
+        address: editingItem.address || ''
+      });
     } else if (isOpen && !editingItem) {
-      setFormData({ name: '' });
+      setFormData({
+        name: '',
+        email: '',
+        currency: 'USD',
+        address: ''
+      });
       setClientRates([]);
     }
   }, [isOpen, editingItem]);
+
+  const loadExpenseAccounts = async () => {
+    setLoadingAccounts(true);
+    try {
+      const response = await zohoBooksAPI.getExpenseAccounts({ limit: 500 });
+      const accounts = response.accounts || [];
+      accounts.sort((a: any, b: any) =>
+        (a.account_name || '').localeCompare(b.account_name || '')
+      );
+      setExpenseAccounts(accounts);
+    } catch (error) {
+      console.error('Error loading expense accounts:', error);
+    } finally {
+      setLoadingAccounts(false);
+    }
+  };
 
   const loadClientRates = async () => {
     if (!editingItem?.id) return;
@@ -73,9 +115,11 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         ratePerMinute: newRate.ratePerMinute ? parseFloat(newRate.ratePerMinute) : undefined,
         ratePerHour: newRate.ratePerHour ? parseFloat(newRate.ratePerHour) : undefined,
         rateType: newRate.rateType as 'minute' | 'hour',
+        expenseAccountId: newRate.expenseAccountId || undefined,
+        expenseAccountName: newRate.expenseAccountName || undefined,
       };
       setClientRates([...clientRates, tempRate]);
-      setNewRate({ language: '', serviceLocation: '', ratePerMinute: '', ratePerHour: '', rateType: 'minute' });
+      setNewRate({ language: '', serviceLocation: '', ratePerMinute: '', ratePerHour: '', rateType: 'minute', expenseAccountId: '', expenseAccountName: '' });
       return;
     }
 
@@ -88,10 +132,12 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         ratePerMinute: newRate.ratePerMinute ? parseFloat(newRate.ratePerMinute) : undefined,
         ratePerHour: newRate.ratePerHour ? parseFloat(newRate.ratePerHour) : undefined,
         rateType: newRate.rateType,
+        expenseAccountId: newRate.expenseAccountId || undefined,
+        expenseAccountName: newRate.expenseAccountName || undefined,
       };
       const created = await clientRatesAPI.create(rateData);
       setClientRates([...clientRates, created]);
-      setNewRate({ language: '', serviceLocation: '', ratePerMinute: '', ratePerHour: '', rateType: 'minute' });
+      setNewRate({ language: '', serviceLocation: '', ratePerMinute: '', ratePerHour: '', rateType: 'minute', expenseAccountId: '', expenseAccountName: '' });
     } catch (error) {
       console.error('Error creating rate:', error);
       alert('Failed to add rate');
@@ -123,9 +169,20 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     // If creating a new client with temp rates, we need to save client first, then rates
     if (!editingItem && clientRates.length > 0) {
       // Pass the rates along with the client data
-      onSave({ name: formData.name, rates: clientRates } as any);
+      onSave({
+        name: formData.name,
+        email: formData.email || undefined,
+        currency: formData.currency,
+        address: formData.address || undefined,
+        rates: clientRates
+      } as any);
     } else {
-      onSave(formData);
+      onSave({
+        name: formData.name,
+        email: formData.email || undefined,
+        currency: formData.currency,
+        address: formData.address || undefined
+      });
     }
   };
 
@@ -138,7 +195,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           {editingItem ? 'Edit Client' : 'Add Client'}
         </h3>
 
-        <div className="mb-6">
+        <div className="mb-4">
           <label className="block text-sm font-medium mb-2">Client Name *</label>
           <input
             type="text"
@@ -146,6 +203,42 @@ export const ClientModal: React.FC<ClientModalProps> = ({
             onChange={(e) => setFormData({...formData, name: e.target.value})}
             className="w-full border rounded px-3 py-2"
             placeholder="ABC Company"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Email</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+              className="w-full border rounded px-3 py-2"
+              placeholder="client@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Currency</label>
+            <select
+              value={formData.currency}
+              onChange={(e) => setFormData({...formData, currency: e.target.value})}
+              className="w-full border rounded px-3 py-2"
+            >
+              {COMMON_CURRENCIES.map(curr => (
+                <option key={curr} value={curr}>{curr}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">Address</label>
+          <textarea
+            value={formData.address}
+            onChange={(e) => setFormData({...formData, address: e.target.value})}
+            className="w-full border rounded px-3 py-2"
+            rows={2}
+            placeholder="123 Main St, City, State, ZIP"
           />
         </div>
 
@@ -171,6 +264,11 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                       {rate.ratePerMinute && rate.ratePerHour && ' | '}
                       {rate.ratePerHour && `$${rate.ratePerHour}/hr`}
                     </span>
+                    {rate.expenseAccountName && (
+                      <span className="text-green-600 text-xs ml-2 px-2 py-0.5 bg-green-100 rounded">
+                        {rate.expenseAccountName}
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => handleDeleteRate(rate.id)}
@@ -254,11 +352,36 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                 />
               </div>
             </div>
+            <div className="mb-2">
+              <label className="block text-xs mb-1">Expense Account</label>
+              <select
+                value={newRate.expenseAccountId}
+                onChange={(e) => {
+                  const selectedAccount = expenseAccounts.find(acc => acc.account_id === e.target.value);
+                  setNewRate({
+                    ...newRate,
+                    expenseAccountId: e.target.value,
+                    expenseAccountName: selectedAccount?.account_name || ''
+                  });
+                }}
+                disabled={loadingAccounts}
+                className="w-full border rounded px-2 py-1 text-sm"
+              >
+                <option value="">
+                  {loadingAccounts ? 'Loading accounts...' : '-- Select Expense Account --'}
+                </option>
+                {expenseAccounts.map((account) => (
+                  <option key={account.account_id} value={account.account_id}>
+                    {account.account_name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               onClick={handleAddRate}
               className="w-full bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
             >
-              + Add Rate
+              Add Rate
             </button>
           </div>
         </div>

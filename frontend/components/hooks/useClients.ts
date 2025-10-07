@@ -9,7 +9,9 @@ export const useClients = () => {
   const loadClients = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await clientsAPI.getAll();
+      const response = await clientsAPI.getAll();
+      // Backend returns { data: [...] }, extract the array
+      const data = Array.isArray(response) ? response : (response.data || []);
       setClients(data);
     } catch (error) {
       console.error('Error loading clients:', error);
@@ -19,10 +21,16 @@ export const useClients = () => {
     }
   }, []);
 
-  const createClient = useCallback(async (data: { name: string; rates?: ClientRate[] }) => {
+  const createClient = useCallback(async (data: { name: string; email?: string; currency?: string; address?: string; rates?: ClientRate[] }) => {
     try {
       const idField = data.name.toLowerCase().replace(/\s+/g, '') + 'Id';
-      const created = await clientsAPI.create({ name: data.name, id_field: idField });
+      const created = await clientsAPI.create({
+        name: data.name,
+        id_field: idField,
+        email: data.email,
+        currency: data.currency || 'USD',
+        address: data.address
+      });
       setClients(prev => [...prev, created]);
 
       // If there are temp rates, save them
@@ -47,9 +55,14 @@ export const useClients = () => {
     }
   }, []);
 
-  const updateClient = useCallback(async (id: string, data: { name: string }) => {
+  const updateClient = useCallback(async (id: string, data: { name: string; email?: string; currency?: string; address?: string }) => {
     try {
-      const updated = await clientsAPI.update(id, { name: data.name });
+      const updated = await clientsAPI.update(id, {
+        name: data.name,
+        email: data.email,
+        currency: data.currency,
+        address: data.address
+      });
       setClients(prev => prev.map(c => c.id === id ? updated : c));
       return updated;
     } catch (error) {

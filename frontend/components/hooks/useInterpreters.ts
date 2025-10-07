@@ -10,7 +10,9 @@ export const useInterpreters = () => {
   const loadInterpreters = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await interpretersAPI.getAll();
+      const response = await interpretersAPI.getAll();
+      // Backend returns { data: [...] }, extract the array
+      const data = Array.isArray(response) ? response : (response.data || []);
       setInterpreters(data);
     } catch (error) {
       console.error('Error loading interpreters:', error);
@@ -52,28 +54,97 @@ export const useInterpreters = () => {
     }
   }, []);
 
+  const syncFromZohoSheet = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await interpretersAPI.syncFromZohoSheet();
+
+      // Update state with new/updated interpreters
+      if (result.success) {
+        // Reload all interpreters to ensure we have the latest data
+        await loadInterpreters();
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error syncing from Zoho Sheet:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, [loadInterpreters]);
+
   const importInterpretersFromCSV = useCallback((file: File) => {
     return new Promise<{ created: number; updated: number; total: number }>((resolve, reject) => {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+        transformHeader: (header: string) => {
+          // Trim whitespace from column names and normalize
+          return header.trim();
+        },
         complete: async (results) => {
           try {
-            const imported = results.data.map((row: any) => ({
-              record_id: row['Record Id'] || '',
-              last_name: row['Last Name'] || '',
-              employee_id: row['Employee ID'] || row['Emplyee ID'] || '',
-              cloudbreak_id: row['Cloudbreak ID'] || '',
-              languagelink_id: row['Languagelink ID'] || '',
-              propio_id: row['Propio ID'] || '',
-              contact_name: row['Contact Name'] || '',
-              email: row['Email'] || '',
-              language: row['Language'] || '',
-              payment_frequency: row['Payment frequency'] || '',
-              service_location: row['Service Location'] || '',
-              rate_per_minute: row['Rate Per Minute'] || row['Rate/Min'] || '',
-              rate_per_hour: row['Rate Per Hour'] || row['Rate per Hour'] || row['Rate/Hour'] || ''
-            }));
+            // Helper function to clean rate values (remove $, spaces, etc.)
+            const cleanRateValue = (value: any): string => {
+              if (!value) return '';
+              // Convert to string and remove $, spaces, commas
+              const cleaned = String(value).replace(/[$,\s]/g, '').trim();
+              // Return empty string if not a valid number
+              return cleaned && !isNaN(parseFloat(cleaned)) ? cleaned : '';
+            };
+
+            const imported = results.data.map((row: any) => {
+              // Debug: Log the first row to see actual column names
+              if (results.data.indexOf(row) === 0) {
+                console.log('CSV Column Names:', Object.keys(row));
+                console.log('First Row Data:', row);
+                console.log('Rate/Min value:', row['Rate/Min']);
+                console.log('Rate/Hour value:', row['Rate/Hour']);
+              }
+
+              return {
+                record_id: row['Record Id'] || row['Record ID'] || row['record_id'] || '',
+                last_name: row['Last Name'] || row['LastName'] || row['last_name'] || '',
+                employee_id: row['Employee ID'] || row['Emplyee ID'] || row['EmployeeID'] || row['employee_id'] || '',
+                cloudbreak_id: row['Cloudbreak ID'] || row['CloudbreakID'] || row['Cloudbreak Id'] || row['cloudbreak_id'] || '',
+                languagelink_id: row['Languagelink ID'] || row['LanguagelinkID'] || row['Languagelink Id'] || row['LanguageLink ID'] || row['languagelink_id'] || '',
+                propio_id: row['Propio ID'] || row['PropioID'] || row['Propio Id'] || row['propio_id'] || '',
+                contact_name: row['Contact Name'] || row['ContactName'] || row['Name'] || row['Full Name'] || row['contact_name'] || '',
+                email: row['Email'] || row['email'] || '',
+                language: row['Language'] || row['language'] || '',
+                payment_frequency: row['Payment frequency'] || row['Payment Frequency'] || row['PaymentFrequency'] || row['payment_frequency'] || '',
+                service_location: row['Service Location'] || row['ServiceLocation'] || row['Service_Location'] || row['service_location'] || '',
+                // Extensive rate field mapping - try all possible variations and clean the values
+                rate_per_minute: cleanRateValue(
+                  row['Rate Per Minute'] ||
+                  row['Rate/Min'] ||
+                  row['Rate/Minute'] ||
+                  row['RatePerMinute'] ||
+                  row['rate_per_minute'] ||
+                  row['Rate per minute'] ||
+                  row['RATE PER MINUTE'] ||
+                  row['Minute Rate'] ||
+                  row['Min Rate'] ||
+                  row['Agreed Rate'] ||  // From Zoho
+                  row['Rate'] ||  // Generic
+                  ''
+                ),
+                rate_per_hour: cleanRateValue(
+                  row['Rate Per Hour'] ||
+                  row['Rate per Hour'] ||
+                  row['Rate/Hour'] ||
+                  row['Rate/Hou'] ||
+                  row['RatePerHour'] ||
+                  row['rate_per_hour'] ||
+                  row['RATE PER HOUR'] ||
+                  row['Hourly Rate'] ||
+                  row['Hour Rate'] ||
+                  row['Hr Rate'] ||
+                  ''
+                )
+              };
+            });
 
             const result = await interpretersAPI.bulkCreate(imported);
 
@@ -113,6 +184,7 @@ export const useInterpreters = () => {
     createInterpreter,
     updateInterpreter,
     deleteInterpreter,
-    importInterpretersFromCSV
+    importInterpretersFromCSV,
+    syncFromZohoSheet
   };
 };

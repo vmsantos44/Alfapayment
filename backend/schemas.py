@@ -4,25 +4,31 @@ from datetime import datetime
 
 # Interpreter Schemas
 class InterpreterBase(BaseModel):
-    record_id: Optional[str] = Field(None, serialization_alias='recordId')
-    last_name: Optional[str] = Field(None, serialization_alias='lastName')
-    employee_id: Optional[str] = Field(None, serialization_alias='employeeId')
-    cloudbreak_id: Optional[str] = Field(None, serialization_alias='cloudbreakId')
-    languagelink_id: Optional[str] = Field(None, serialization_alias='languagelinkId')
-    propio_id: Optional[str] = Field(None, serialization_alias='propioId')
-    contact_name: str = Field(..., serialization_alias='contactName')
+    record_id: Optional[str] = Field(None, validation_alias='recordId', serialization_alias='recordId')
+    last_name: Optional[str] = Field(None, validation_alias='lastName', serialization_alias='lastName')
+    employee_id: Optional[str] = Field(None, validation_alias='employeeId', serialization_alias='employeeId')
+    cloudbreak_id: Optional[str] = Field(None, validation_alias='cloudbreakId', serialization_alias='cloudbreakId')
+    languagelink_id: Optional[str] = Field(None, validation_alias='languagelinkId', serialization_alias='languagelinkId')
+    propio_id: Optional[str] = Field(None, validation_alias='propioId', serialization_alias='propioId')
+    contact_name: str = Field(..., validation_alias='contactName', serialization_alias='contactName')
     email: Optional[str] = None
-    language: Optional[str] = None
-    payment_frequency: Optional[str] = Field(None, serialization_alias='paymentFrequency')
-    service_location: Optional[str] = Field(None, serialization_alias='serviceLocation')
-    rate_per_minute: Optional[str] = Field(None, serialization_alias='ratePerMinute')
-    rate_per_hour: Optional[str] = Field(None, serialization_alias='ratePerHour')
+    language: Optional[str] = None  # Legacy field, kept for backward compatibility
+    languages: Optional[List[str]] = None  # New field for multiple languages
+    country: Optional[str] = None
+    payment_frequency: Optional[str] = Field(None, validation_alias='paymentFrequency', serialization_alias='paymentFrequency')
+    service_location: Optional[str] = Field(None, validation_alias='serviceLocation', serialization_alias='serviceLocation')
+    onboarding_status: Optional[str] = Field(None, validation_alias='onboardingStatus', serialization_alias='onboardingStatus')
+    rate_per_minute: Optional[str] = Field(None, validation_alias='ratePerMinute', serialization_alias='ratePerMinute')
+    rate_per_hour: Optional[str] = Field(None, validation_alias='ratePerHour', serialization_alias='ratePerHour')
+
+    class Config:
+        populate_by_name = True
 
 class InterpreterCreate(InterpreterBase):
-    contact_name: str = Field(..., serialization_alias='contactName')
+    contact_name: str = Field(..., validation_alias='contactName', serialization_alias='contactName')
 
 class InterpreterUpdate(InterpreterBase):
-    contact_name: Optional[str] = Field(None, serialization_alias='contactName')
+    contact_name: Optional[str] = Field(None, validation_alias='contactName', serialization_alias='contactName')
 
 class InterpreterResponse(InterpreterBase):
     id: str
@@ -37,6 +43,10 @@ class InterpreterResponse(InterpreterBase):
 class ClientBase(BaseModel):
     name: str
     id_field: str = Field(..., serialization_alias='idField')
+    accounts: Optional[str] = None
+    email: Optional[str] = None
+    currency: str = "USD"
+    address: Optional[str] = None
     column_template: Optional[str] = Field(None, serialization_alias='columnTemplate')
 
 class ClientCreate(ClientBase):
@@ -45,6 +55,10 @@ class ClientCreate(ClientBase):
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
     id_field: Optional[str] = Field(None, serialization_alias='idField')
+    accounts: Optional[str] = None
+    email: Optional[str] = None
+    currency: Optional[str] = None
+    address: Optional[str] = None
     column_template: Optional[str] = Field(None, serialization_alias='columnTemplate')
 
 class ClientResponse(ClientBase):
@@ -144,3 +158,54 @@ class PaymentStats(BaseModel):
     approved_count: int
     pending_count: int
     rejected_count: int
+
+# Sync Operation Schemas
+class SyncOperationResponse(BaseModel):
+    id: str
+    trigger_type: str = Field(..., serialization_alias='triggerType')
+    status: str
+    total_fetched: float = Field(..., serialization_alias='totalFetched')
+    total_created: float = Field(..., serialization_alias='totalCreated')
+    total_updated: float = Field(..., serialization_alias='totalUpdated')
+    total_skipped: float = Field(..., serialization_alias='totalSkipped')
+    total_errors: float = Field(..., serialization_alias='totalErrors')
+    total_synced_to_zoho: float = Field(..., serialization_alias='totalSyncedToZoho')
+    started_at: datetime = Field(..., serialization_alias='startedAt')
+    completed_at: Optional[datetime] = Field(None, serialization_alias='completedAt')
+    duration_seconds: Optional[float] = Field(None, serialization_alias='durationSeconds')
+    error_message: Optional[str] = Field(None, serialization_alias='errorMessage')
+    created_at: datetime = Field(..., serialization_alias='createdAt')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class SyncLogResponse(BaseModel):
+    id: str
+    sync_operation_id: str = Field(..., serialization_alias='syncOperationId')
+    level: str
+    message: str
+    record_id: Optional[str] = Field(None, serialization_alias='recordId')
+    interpreter_id: Optional[str] = Field(None, serialization_alias='interpreterId')
+    details: Optional[str] = None
+    created_at: datetime = Field(..., serialization_alias='createdAt')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class SyncStatsResponse(BaseModel):
+    last_sync: Optional[SyncOperationResponse] = Field(None, serialization_alias='lastSync')
+    total_operations: int = Field(..., serialization_alias='totalOperations')
+    is_syncing: bool = Field(..., serialization_alias='isSyncing')
+
+    class Config:
+        populate_by_name = True
+
+class ForceSyncRequest(BaseModel):
+    module: str = "Contacts"  # "Contacts" or "Leads"
+
+class TestSyncRequest(BaseModel):
+    module: str = "Contacts"  # "Contacts" or "Leads"
+    record_id: Optional[str] = Field(None, validation_alias='recordId', serialization_alias='recordId')
+    email: Optional[str] = None

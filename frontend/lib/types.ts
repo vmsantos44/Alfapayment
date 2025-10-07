@@ -10,9 +10,12 @@ export interface Interpreter {
   propioId?: string;
   contactName: string;
   email?: string;
-  language?: string;
+  language?: string;  // Legacy field, kept for backward compatibility
+  languages?: string[];  // New field for multiple languages
+  country?: string;
   paymentFrequency?: string;
   serviceLocation?: string;
+  onboardingStatus?: string;
   ratePerMinute?: string;
   ratePerHour?: string;
 }
@@ -21,6 +24,10 @@ export interface Client {
   id: string;
   name: string;
   idField: string;
+  accounts?: string;
+  email?: string;
+  currency?: string;
+  address?: string;
   columnTemplate?: Record<string, string>;
 }
 
@@ -29,9 +36,21 @@ export interface ClientRate {
   clientId: string;
   language: string;
   serviceLocation?: string;
+  serviceType?: string;
   ratePerMinute?: number;
   ratePerHour?: number;
   rateType: 'minute' | 'hour';
+  rateAmount?: number;
+  purchaseAmount?: number;
+  unitType?: string;
+  marginAbs?: number;
+  marginPct?: number;
+  expenseAccountId?: string;
+  expenseAccountName?: string;
+  status?: string;
+  source?: string;
+  effectiveDate?: string;
+  notes?: string;
   createdAt?: string;
   updatedAt?: string;
 }
