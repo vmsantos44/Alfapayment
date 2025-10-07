@@ -36,10 +36,10 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Alfa Payment API", version="2.0.0")
 
-# CORS configuration - Allow all origins for development
+# CORS configuration - Allow all origins for development and production (Replit uses HTTPS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://.*",  # Allow all HTTP origins
+    allow_origin_regex=r"https?://.*",  # Allow both HTTP and HTTPS origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

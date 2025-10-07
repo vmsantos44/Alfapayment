@@ -14,7 +14,7 @@
     "start:frontend": "cd frontend && npm start",
     "start:all": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
   },
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^8.2.2"
   },
   "engines": {

@@ -1,5 +1,5 @@
 # Alfa Payment System - Replit Configuration
-run = "npm run start:all"
+run = "cd frontend && npm run build && cd .. && npm run start:all"
 
 [nix]
 channel = "stable-24_05"
@@ -7,6 +7,7 @@ channel = "stable-24_05"
 [env]
 PORT = "8000"
 FRONTEND_URL = "https://$REPL_SLUG.$REPL_OWNER.repl.co"
+NEXT_PUBLIC_API_URL = "https://$REPL_SLUG.$REPL_OWNER.repl.co:8000"
 PATH = "/home/runner/$REPL_SLUG/.config/npm/node_global/bin:/home/runner/$REPL_SLUG/node_modules/.bin:$PATH"
 
 [deployment]
